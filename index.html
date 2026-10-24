@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KIBY Food Company - Gestion Atelier & Livraison</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FIREBASE SDK (CDN Compat v10) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        kibyRed: '#e6222b',
+                        kibyDarkRed: '#b51720',
+                        kibyYellow: '#ffde17',
+                        kibyDark: '#121212',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            #print-section, #print-section * { visibility: visible; }
+            #print-section {
+                position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; padding: 20px; display: block !important;
+            }
+            .no-print { display: none !important; }
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #e6222b; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-full bg-slate-100 font-sans text-slate-800 antialiased">
+
+    <!-- App Root Container -->
+    <div id="app" class="min-h-full flex flex-col"></div>
+
+    <!-- Notification Modal / Toast -->
+    <div id="notification-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center">
+            <div id="notif-icon-container" class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"></div>
+            <h3 id="notif-title" class="text-xl font-bold text-slate-900 mb-2">Notification</h3>
+            <p id="notif-message" class="text-slate-600 text-sm mb-6"></p>
+            <button onclick="closeNotification()" class="w-full bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 px-4 rounded-xl transition shadow-md">Compris</button>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 text-center">
+            <div class="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 id="confirm-title" class="text-xl font-bold text-slate-900 mb-2">Confirmation</h3>
+            <p id="confirm-message" class="text-slate-600 text-sm mb-6"></p>
+            <div class="flex space-x-3">
+                <button onclick="closeConfirm()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2.5 px-4 rounded-xl transition">Annuler</button>
+                <button id="confirm-ok-btn" class="flex-1 bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 px-4 rounded-xl transition shadow-md">Confirmer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgot-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-slate-900">Récupération de Mot de Passe Admin</h3>
+                <button onclick="closeForgotModal()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Entrez votre numéro de téléphone administrateur enregistré.</p>
+            <form onsubmit="handlePasswordRecovery(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Numéro de Téléphone</label>
+                    <input type="text" id="recovery-phone" required placeholder="Ex: 0553339847" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition shadow-md">Vérifier</button>
+            </form>
+            <div id="recovery-result" class="mt-4 hidden p-3 rounded-xl text-xs font-semibold text-center"></div>
+        </div>
+    </div>
+
+    <!-- BLUETOOTH PRINTER CONFIGURATION MODAL -->
+    <div id="bluetooth-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-auto overflow-hidden p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg flex items-center space-x-2 text-slate-900">
+                    <i class="fa-solid fa-bluetooth text-blue-600"></i>
+                    <span>Imprimante Thermique Bluetooth</span>
+                </h3>
+                <button onclick="closeBluetoothModal()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Connectez votre imprimante thermique ESC/POS (ex: POS-58).</p>
+            
+            <div class="bg-slate-50 p-4 rounded-2xl mb-4 space-y-2">
+                <p class="text-xs font-bold text-slate-700">État de connexion :</p>
+                <div id="bt-status-badge" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                    Déconnectée
+                </div>
+                <p id="bt-device-name" class="text-xs text-slate-500"></p>
+            </div>
+
+            <div class="space-y-3">
+                <button onclick="connectBluetoothPrinter()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition shadow-md flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-magnifying-glass-bluetooth"></i>
+                    <span>Connecter Imprimante Bluetooth</span>
+                </button>
+                <button onclick="testBluetoothPrint()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl transition">
+                    Imprimer Ticket Test
+                </button>
+                <button onclick="closeBluetoothModal()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl transition">
+                    Fermer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PREVIEW INVOICE / RECEIPT MODAL -->
+    <div id="preview-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden overflow-y-auto p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center no-print">
+                <h3 class="font-bold text-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-eye text-kibyRed"></i>
+                    <span>Aperçu Obligatoire du Reçu de Caisse</span>
+                </h3>
+                <button onclick="closePreviewModal()" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div id="preview-modal-body" class="p-6 overflow-y-auto flex-1 bg-slate-50"></div>
+            <div class="bg-white border-t border-slate-200 px-6 py-4 flex flex-wrap justify-between items-center gap-2 no-print">
+                <button onclick="openBluetoothModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl transition flex items-center space-x-2">
+                    <i class="fa-solid fa-bluetooth"></i>
+                    <span>Imprimante Bluetooth</span>
+                </button>
+                <div class="flex space-x-2">
+                    <button onclick="closePreviewModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-5 py-2.5 rounded-xl transition">Fermer</button>
+                    <button onclick="printViaBluetoothOrPaper()" class="bg-kibyRed hover:bg-kibyDarkRed text-white font-bold px-6 py-2.5 rounded-xl transition shadow-lg flex items-center space-x-2">
+                        <i class="fa-solid fa-print"></i>
+                        <span>Imprimer Reçu</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLIENT HISTORY MODAL -->
+    <div id="client-history-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden overflow-y-auto p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-3xl w-full mx-auto my-8 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-slate-900 text-white px-6 py-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg flex items-center space-x-2">
+                    <i class="fa-solid fa-store text-kibyRed"></i>
+                    <span id="client-history-title">Historique Client</span>
+                </h3>
+                <button onclick="closeClientHistoryModal()" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div id="client-history-body" class="p-6 overflow-y-auto flex-1 bg-slate-50 space-y-4"></div>
+            <div class="bg-white border-t border-slate-200 px-6 py-4 flex justify-end">
+                <button onclick="closeClientHistoryModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-5 py-2.5 rounded-xl transition">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Print Section -->
+    <div id="print-section" class="hidden"></div>
+
+    <!-- Application JavaScript Logic with Firebase & Remote Sync -->
+    <script>
+        // --- CONFIGURATION FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "VOTRE_API_KEY",
+            authDomain: "kiby-food-93ba4.firebaseapp.com",
+            projectId: "kiby-food-93ba4",
+            storageBucket: "kiby-food-93ba4.firebasestorage.app",
+            messagingSenderId: "297623651857",
+            appId: "1:297623651857:web:81914e0330ae901a0293b0"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const DEFAULT_STATE = {
+            currentUser: null, 
+            admins: [
+                { id: 'admin_1', name: 'Khelaf Ibrahim', password: 'admin', phone: '0553339847', role: 'admin' },
+                { id: 'admin_2', name: 'Belhachemi Youcef', password: 'admin', phone: '0772666058', role: 'admin' }
+            ],
+            deliveryMen: [
+                { 
+                    id: 'del_1', 
+                    name: 'Ahmed Livreur', 
+                    password: '123', 
+                    phone: '0550112233', 
+                    car: 'Renault Express (Blanc)', 
+                    latitude: 35.7128, 
+                    longitude: -0.5521,
+                    lastGpsUpdate: '14:20',
+                    quotaLoaded: [
+                        { productName: 'Frites KIBY (Sachet 5kg)', qtyBags: 25 },
+                        { productName: 'Sauce Algérienne KIBY 1L', qtyBags: 15 }
+                    ],
+                    lastValidatedBy: 'Khelaf Ibrahim', 
+                    lastValidatedDate: '2026-06-09' 
+                },
+                { 
+                    id: 'del_2', 
+                    name: 'Reda Transport', 
+                    password: '123', 
+                    phone: '0661223344', 
+                    car: 'Peugeot Partner (Gris)', 
+                    latitude: 35.7180, 
+                    longitude: -0.5480,
+                    lastGpsUpdate: '14:25',
+                    quotaLoaded: [
+                        { productName: 'Frites KIBY (Sachet 5kg)', qtyBags: 18 }
+                    ],
+                    lastValidatedBy: 'Belhachemi Youcef', 
+                    lastValidatedDate: '2026-06-09' 
+                }
+            ],
+            products: [
+                { id: 'p_1', name: 'Frites KIBY (Sachet 5kg)', category: 'Surgelés', price: 1200, cost: 850, stock: 400, supplier: 'AgroCom Algérie' },
+                { id: 'p_2', name: 'Sauce Algérienne KIBY 1L', category: 'Sauces', price: 450, cost: 280, stock: 200, supplier: 'AgroCom Algérie' },
+                { id: 'p_3', name: 'Mayonnaise KIBY 1L', category: 'Sauces', price: 400, cost: 250, stock: 150, supplier: 'AgroCom Algérie' },
+                { id: 'p_4', name: 'Ketchup KIBY 1L', category: 'Sauces', price: 420, cost: 270, stock: 120, supplier: 'Global Food SARL' },
+                { id: 'p_5', name: 'Galettes Tacos KIBY (Pack 50)', category: 'Boulangerie', price: 800, cost: 520, stock: 100, supplier: 'Embalplast Oran' }
+            ],
+            suppliers: [
+                { id: 'sup_1', name: 'AgroCom Algérie', phone: '021456789', status: 'Validé', balance: 0 },
+                { id: 'sup_2', name: 'Global Food SARL', phone: '041789123', status: 'Crédit', balance: 45000 },
+                { id: 'sup_3', name: 'Embalplast Oran', phone: '0555123456', status: 'Validé', balance: 0 }
+            ],
+            clients: [
+                { id: 'c_1', name: 'Restaurant Le Pacha', phone: '0550112233', location: 'Bir El Djir, Oran' },
+                { id: 'c_2', name: 'Pizzeria Bella Vista', phone: '0661223344', location: 'USTHB, Oran' },
+                { id: 'c_3', name: 'Fast Food Le Délice', phone: '0770334455', location: 'Centre Ville, Oran' },
+                { id: 'c_4', name: 'Tacos King Bir El Djir', phone: '0558996633', location: 'Boulevard Principal, Bir El Djir' }
+            ],
+            charges: [
+                { id: 'ch_1', title: 'Achat Emballages Cartons', amount: 15000, date: '2026-06-01', category: 'Matériel' },
+                { id: 'ch_2', title: 'Carburant Véhicules Livraison', amount: 8500, date: '2026-06-03', category: 'Transport' },
+                { id: 'ch_3', title: 'Maintenance Groupe Froid', amount: 12000, date: '2026-06-05', category: 'Maintenance' }
+            ],
+            invoices: [
+                {
+                    id: 'KIBY-REC-2026-001',
+                    date: '2026-06-10 14:30',
+                    clientName: 'Restaurant Le Pacha',
+                    clientPhone: '0550112233',
+                    clientLocation: 'Bir El Djir, Oran',
+                    agentName: 'Admin: Khelaf Ibrahim',
+                    items: [
+                        { productName: 'Frites KIBY (Sachet 5kg)', qty: 5, price: 1200, cost: 850 }
+                    ],
+                    totalAmount: 6000,
+                    status: 'Payée'
+                }
+            ],
+            activeTab: 'dashboard'
+        };
+
+        let appState = loadState();
+        let currentInvoiceForPreview = null;
+        let currentCart = [];
+        let bluetoothDevice = null;
+        let bluetoothCharacteristic = null;
+        let gpsWatchId = null;
+
+        function loadState() {
+            const saved = localStorage.getItem('kiby_app_state_v15');
+            if (saved) {
+                try { return JSON.parse(saved); } catch(e) { console.error(e); }
+            }
+            return JSON.parse(JSON.stringify(DEFAULT_STATE));
+        }
+
+        function saveState() {
+            localStorage.setItem('kiby_app_state_v15', JSON.stringify(appState));
+            db.collection("kiby_data").doc("global_state").set(appState)
+                .catch(err => console.error("Erreur de synchronisation Firebase :", err));
+        }
+
+        // Synchronisation en temps réel Firestore
+        db.collection("kiby_data").doc("global_state").onSnapshot((doc) => {
+            if (doc.exists) {
+                const remoteState = doc.data();
+                const currentUser = appState.currentUser;
+                appState = remoteState;
+                if (currentUser) {
+                    appState.currentUser = currentUser;
+                }
+                localStorage.setItem('kiby_app_state_v15', JSON.stringify(appState));
+                render();
+            }
+        });
+
+        function showNotification(title, message, type = 'success') {
+            document.getElementById('notif-title').innerText = title;
+            document.getElementById('notif-message').innerText = message;
+            const iconContainer = document.getElementById('notif-icon-container');
+            if (type === 'success') {
+                iconContainer.className = "w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl";
+                iconContainer.innerHTML = '<i class="fa-solid fa-check"></i>';
+            } else {
+                iconContainer.className = "w-16 h-16 bg-red-100 text-kibyRed rounded-full flex items-center justify-center mx-auto mb-4 text-2xl";
+                iconContainer.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+            }
+            document.getElementById('notification-modal').classList.remove('hidden');
+        }
+
+        function closeNotification() {
+            document.getElementById('notification-modal').classList.add('hidden');
+        }
+
+        function confirmAction(title, message, onConfirm) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-message').innerText = message;
+            const okBtn = document.getElementById('confirm-ok-btn');
+            okBtn.onclick = () => { closeConfirm(); onConfirm(); };
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+        }
+
+        function openForgotModal() {
+            document.getElementById('recovery-phone').value = '';
+            document.getElementById('recovery-result').classList.add('hidden');
+            document.getElementById('forgot-modal').classList.remove('hidden');
+        }
+
+        function closeForgotModal() {
+            document.getElementById('forgot-modal').classList.add('hidden');
+        }
+
+        function handlePasswordRecovery(e) {
+            e.preventDefault();
+            const phone = document.getElementById('recovery-phone').value.trim();
+            const admin = appState.admins.find(a => a.phone === phone);
+            const resDiv = document.getElementById('recovery-result');
+            resDiv.classList.remove('hidden');
+            if (admin) {
+                resDiv.className = "mt-4 p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-semibold text-center";
+                resDiv.innerHTML = `Administrateur : <b>${admin.name}</b><br>Mot de passe : <span class="text-kibyRed font-bold text-sm">${admin.password}</span>`;
+            } else {
+                resDiv.className = "mt-4 p-3 bg-red-50 text-kibyRed rounded-xl text-xs font-semibold text-center";
+                resDiv.innerText = "Aucun administrateur associé à ce numéro de téléphone.";
+            }
+        }
+
+        // --- REAL GPS LIVE TRACKING ---
+        function startGpsTrackingForDriver() {
+            if (!navigator.geolocation) return;
+            gpsWatchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    
+                    if (appState.currentUser && appState.currentUser.role === 'delivery') {
+                        const driver = appState.deliveryMen.find(d => d.name === appState.currentUser.name);
+                        if (driver) {
+                            driver.latitude = lat;
+                            driver.longitude = lon;
+                            driver.lastGpsUpdate = now;
+                            saveState();
+                        }
+                    }
+                },
+                (error) => { console.error("Erreur GPS :", error.message); },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
+            );
+        }
+
+        function stopGpsTracking() {
+            if (gpsWatchId !== null) {
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+            }
+        }
+
+        // --- WEB BLUETOOTH PRINTER FUNCTIONS ---
+        function openBluetoothModal() {
+            document.getElementById('bluetooth-modal').classList.remove('hidden');
+            updateBluetoothUIStatus();
+        }
+
+        function closeBluetoothModal() {
+            document.getElementById('bluetooth-modal').classList.add('hidden');
+        }
+
+        function updateBluetoothUIStatus() {
+            const badge = document.getElementById('bt-status-badge');
+            const nameEl = document.getElementById('bt-device-name');
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                badge.className = "inline-block px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700";
+                badge.innerText = "Connectée";
+                nameEl.innerText = `Appareil : ${bluetoothDevice.name || 'Imprimante Thermique'}`;
+            } else {
+                badge.className = "inline-block px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700";
+                badge.innerText = "Déconnectée";
+                nameEl.innerText = "Prête pour connexion Bluetooth";
+            }
+        }
+
+        async function connectBluetoothPrinter() {
+            if (!navigator.bluetooth) {
+                showNotification('Non supporté', 'Votre navigateur ne supporte pas l\'API Web Bluetooth (utilisez Chrome sur Android/PC).', 'error');
+                return;
+            }
+            try {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000ff00-0000-1000-8000-00805f9b34fb']
+                });
+                
+                const server = await bluetoothDevice.gatt.connect();
+                const services = await server.getPrimaryServices();
+                let targetChar = null;
+                for (const service of services) {
+                    const chars = await service.getCharacteristics();
+                    for (const char of chars) {
+                        if (char.properties.write || char.properties.writeWithoutResponse) {
+                            targetChar = char;
+                            break;
+                        }
+                    }
+                    if (targetChar) break;
+                }
+
+                if (targetChar) {
+                    bluetoothCharacteristic = targetChar;
+                    updateBluetoothUIStatus();
+                    showNotification('Succès', 'Imprimante thermique Bluetooth connectée avec succès !');
+                } else {
+                    showNotification('Erreur', 'Service d\'impression ESC/POS non trouvé sur cet appareil.', 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showNotification('Erreur Bluetooth', 'Connexion refusée ou échouée.', 'error');
+            }
+        }
+
+        async function sendToBluetoothPrinter(textData) {
+            if (!bluetoothCharacteristic || !bluetoothDevice || !bluetoothDevice.gatt.connected) {
+                throw new Error('Imprimante Bluetooth non connectée.');
+            }
+            const encoder = new TextEncoder();
+            const data = encoder.encode(textData);
+            const chunkSize = 512;
+            for (let i = 0; i < data.length; i += chunkSize) {
+                const chunk = data.slice(i, i + chunkSize);
+                await bluetoothCharacteristic.writeValue(chunk);
+            }
+        }
+
+        async function testBluetoothPrint() {
+            try {
+                const testText = "\x1B\x40" + "\x1B\x61\x01" + "KIBY FOOD COMPANY\nTest Bluetooth OK\n------------------\nBir El Djir, Oran\n\n\n";
+                await sendToBluetoothPrinter(testText);
+                showNotification('Succès', 'Ticket test envoyé à l\'imprimante Bluetooth.');
+            } catch (e) {
+                showNotification('Erreur', e.message, 'error');
+            }
+        }
+
+        function printViaBluetoothOrPaper() {
+            if (!currentInvoiceForPreview) return;
+            
+            currentInvoiceForPreview.items.forEach(item => {
+                const p = appState.products.find(prod => prod.name === item.productName);
+                if (p) p.stock = Math.max(0, p.stock - item.qty);
+            });
+
+            appState.invoices.unshift(currentInvoiceForPreview);
+            saveState();
+
+            if (bluetoothCharacteristic && bluetoothDevice && bluetoothDevice.gatt.connected) {
+                try {
+                    let escpos = "\x1B\x40" + "\x1B\x61\x01";
+                    escpos += "KIBY FOOD COMPANY\n";
+                    escpos += "N03 Maata Mohammed, Bir El Djir, Oran\n";
+                    escpos += "Tel: 0553339847\n";
+                    escpos += "--------------------------------\n";
+                    escpos += `REÇU: ${currentInvoiceForPreview.id}\n`;
+                    escpos += `Date: ${currentInvoiceForPreview.date}\n`;
+                    escpos += `Client: ${currentInvoiceForPreview.clientName}\n`;
+                    escpos += `Émetteur: ${currentInvoiceForPreview.agentName}\n`;
+                    escpos += "--------------------------------\n";
+                    escpos += "\x1B\x61\x00";
+                    currentInvoiceForPreview.items.forEach(i => {
+                        escpos += `${i.productName}\n  ${i.qty} x ${i.price} DA = ${(i.qty * i.price)} DA\n`;
+                    });
+                    escpos += "--------------------------------\n";
+                    escpos += "\x1B\x61\x02";
+                    escpos += `TOTAL: ${currentInvoiceForPreview.totalAmount.toLocaleString()} DA\n\n`;
+                    escpos += "\x1B\x61\x01" + "Merci de votre confiance !\n\n\n";
+
+                    sendToBluetoothPrinter(escpos);
+                    showNotification('Impression', 'Reçu envoyé à l\'imprimante thermique Bluetooth.');
+                } catch(e) {
+                    console.error(e);
+                }
+            }
+
+            const printSec = document.getElementById('print-section');
+            printSec.innerHTML = generateInvoiceHtmlMarkup(currentInvoiceForPreview);
+
+            closePreviewModal();
+            currentCart = [];
+            render();
+
+            setTimeout(() => {
+                window.print();
+                printSec.innerHTML = '';
+            }, 300);
+        }
+
+        // --- RENDER APP ---
+        function render() {
+            const root = document.getElementById('app');
+            if (!appState.currentUser) {
+                stopGpsTracking();
+                root.innerHTML = renderLoginScreen();
+            } else {
+                root.innerHTML = renderMainApp();
+            }
+        }
+
+        function renderLoginScreen() {
+            return `
+                <div class="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-kibyDark p-4 sm:p-6">
+                    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-700/50">
+                        <div class="bg-gradient-to-r from-kibyRed to-kibyDarkRed p-6 text-center relative overflow-hidden">
+                            <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-lg mb-3 p-2">
+                                <span class="text-kibyRed font-extrabold text-3xl italic tracking-tighter">Kiby</span>
+                            </div>
+                            <h1 class="text-2xl font-black text-white uppercase tracking-wider">KIBY Food Company</h1>
+                            <p class="text-white/80 text-xs font-medium mt-1">N°03, Coop. Maata Mohammed, Bir El Djir, Oran</p>
+                        </div>
+                        <div class="p-8">
+                            <h2 class="text-xl font-bold text-slate-800 mb-6 text-center">Connexion à l'application</h2>
+                            <div class="flex rounded-xl bg-slate-100 p-1 mb-6">
+                                <button onclick="setLoginType('admin')" id="tab-login-admin" class="flex-1 py-2 text-sm font-bold rounded-lg transition bg-white text-kibyRed shadow-sm">Administrateur</button>
+                                <button onclick="setLoginType('delivery')" id="tab-login-delivery" class="flex-1 py-2 text-sm font-bold rounded-lg transition text-slate-600">Livreur</button>
+                            </div>
+                            <form onsubmit="handleLogin(event)" class="space-y-4">
+                                <div id="admin-select-container">
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-2">Administrateur</label>
+                                    <select id="login-admin-name" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                        ${appState.admins.map(a => `<option value="${a.name}">${a.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div id="delivery-select-container" class="hidden">
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-2">Compte Livreur</label>
+                                    <select id="login-delivery-name" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                        ${appState.deliveryMen.map(d => `<option value="${d.name}">${d.name} (${d.car})</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-2">Mot de passe</label>
+                                    <input type="password" id="login-password" placeholder="Votre mot de passe" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                </div>
+                                <button type="submit" class="w-full bg-kibyRed hover:bg-kibyDarkRed text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-kibyRed/30 flex items-center justify-center space-x-2">
+                                    <i class="fa-solid fa-right-to-bracket"></i>
+                                    <span>Se connecter</span>
+                                </button>
+                            </form>
+                            <div class="mt-4 text-center">
+                                <button onclick="openForgotModal()" class="text-xs text-kibyRed font-bold hover:underline">Mot de passe oublié ?</button>
+                            </div>
+                            <div class="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-400">
+                                <p><i class="fa-solid fa-phone text-kibyRed mr-1"></i> 0553339847 / 0772666058</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let currentLoginMode = 'admin';
+        function setLoginType(type) {
+            currentLoginMode = type;
+            const adminTab = document.getElementById('tab-login-admin');
+            const deliveryTab = document.getElementById('tab-login-delivery');
+            const adminContainer = document.getElementById('admin-select-container');
+            const deliveryContainer = document.getElementById('delivery-select-container');
+
+            if (type === 'admin') {
+                adminTab.className = "flex-1 py-2 text-sm font-bold rounded-lg transition bg-white text-kibyRed shadow-sm";
+                deliveryTab.className = "flex-1 py-2 text-sm font-bold rounded-lg transition text-slate-600";
+                adminContainer.classList.remove('hidden');
+                deliveryContainer.classList.add('hidden');
+            } else {
+                deliveryTab.className = "flex-1 py-2 text-sm font-bold rounded-lg transition bg-white text-kibyRed shadow-sm";
+                adminTab.className = "flex-1 py-2 text-sm font-bold rounded-lg transition text-slate-600";
+                deliveryContainer.classList.remove('hidden');
+                adminContainer.classList.add('hidden');
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const password = document.getElementById('login-password').value;
+            if (currentLoginMode === 'admin') {
+                const name = document.getElementById('login-admin-name').value;
+                const admin = appState.admins.find(a => a.name === name);
+                if (admin && admin.password === password) {
+                    appState.currentUser = { name: admin.name, role: 'admin', id: admin.id };
+                    saveState();
+                    render();
+                } else {
+                    showNotification('Erreur', 'Mot de passe administrateur incorrect (par défaut : admin).', 'error');
+                }
+            } else {
+                const name = document.getElementById('login-delivery-name').value;
+                const delivery = appState.deliveryMen.find(d => d.name === name);
+                if (delivery && delivery.password === password) {
+                    appState.currentUser = { name: delivery.name, role: 'delivery', id: delivery.id, car: delivery.car };
+                    saveState();
+                    startGpsTrackingForDriver();
+                    render();
+                } else {
+                    showNotification('Erreur', 'Mot de passe livreur incorrect.', 'error');
+                }
+            }
+        }
+
+        function logout() {
+            stopGpsTracking();
+            appState.currentUser = null;
+            render();
+        }
+
+        function renderMainApp() {
+            const isAdmin = appState.currentUser.role === 'admin';
+            return `
+                <div class="min-h-full flex flex-col md:flex-row">
+                    <!-- SIDEBAR GAUCHE -->
+                    <aside class="w-full md:w-72 bg-slate-900 text-white flex flex-col justify-between p-4 md:min-h-screen no-print">
+                        <div>
+                            <div class="flex items-center space-x-3 mb-8 px-2 pt-2">
+                                <div class="w-12 h-12 bg-kibyRed rounded-xl flex items-center justify-center shadow-md">
+                                    <span class="text-white font-black text-xl italic">K</span>
+                                </div>
+                                <div>
+                                    <h1 class="text-base font-black tracking-wide text-white uppercase flex items-center space-x-1.5">
+                                        <span>KIBY Food</span>
+                                        <span class="bg-kibyRed text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">Oran</span>
+                                    </h1>
+                                    <p class="text-[11px] text-slate-400">Bir El Djir</p>
+                                </div>
+                            </div>
+                            
+                            <nav class="space-y-1.5">
+                                ${isAdmin ? `
+                                    <button onclick="switchTab('dashboard')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'dashboard' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-chart-pie w-5"></i><span>Tableau de Bord</span></button>
+                                    <button onclick="switchTab('stock')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'stock' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-boxes-stacked w-5"></i><span>Atelier & Stock (Marges)</span></button>
+                                    <button onclick="switchTab('delivery_mgmt')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'delivery_mgmt' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-satellite-dish w-5"></i><span>GPS & Livreurs</span></button>
+                                    <button onclick="switchTab('charges')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'charges' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-file-invoice-dollar w-5"></i><span>Charges</span></button>
+                                ` : `
+                                    <button onclick="switchTab('delivery_portal')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'delivery_portal' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-box-archive w-5"></i><span>Mon Quota Voiture (5kg)</span></button>
+                                `}
+                                <button onclick="switchTab('clients')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'clients' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-store w-5"></i><span>Clients & Reçus</span></button>
+                                <button onclick="switchTab('invoices')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-sm font-bold transition ${appState.activeTab === 'invoices' ? 'bg-kibyRed text-white shadow-lg' : 'text-slate-300 hover:bg-slate-800'}"><i class="fa-solid fa-receipt w-5"></i><span>Historique Reçus</span></button>
+                            </nav>
+                        </div>
+
+                        <div class="pt-6 border-t border-slate-800 mt-6 space-y-3">
+                            <button onclick="openBluetoothModal()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 shadow-md">
+                                <i class="fa-solid fa-bluetooth"></i>
+                                <span>Imprimante Bluetooth</span>
+                            </button>
+                            <div class="flex items-center justify-between bg-slate-800 p-3 rounded-2xl">
+                                <div>
+                                    <p class="text-xs font-bold text-white">${appState.currentUser.name}</p>
+                                    <span class="text-[10px] font-bold uppercase text-slate-400">${isAdmin ? 'Admin' : 'Livreur'}</span>
+                                </div>
+                                <button onclick="logout()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 p-2 rounded-xl transition" title="Déconnexion">
+                                    <i class="fa-solid fa-power-off"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- CONTENU PRINCIPAL -->
+                    <main class="flex-1 p-6 md:p-10 overflow-y-auto">
+                        ${renderActiveTabContent()}
+                    </main>
+                </div>
+            `;
+        }
+
+        function switchTab(tab) {
+            appState.activeTab = tab;
+            saveState();
+            render();
+        }
+
+        function renderActiveTabContent() {
+            const isAdmin = appState.currentUser.role === 'admin';
+            if (appState.activeTab === 'dashboard' && isAdmin) return renderDashboard();
+            if (appState.activeTab === 'stock' && isAdmin) return renderStockModule();
+            if (appState.activeTab === 'delivery_mgmt' && isAdmin) return renderDeliveryMgmtModule();
+            if (appState.activeTab === 'charges' && isAdmin) return renderChargesModule();
+            if (appState.activeTab === 'delivery_portal' && !isAdmin) return renderDeliveryPortal();
+            if (appState.activeTab === 'clients') return renderClientsModule();
+            if (appState.activeTab === 'invoices') return renderInvoicesModule();
+            return renderClientsModule();
+        }
+
+        // --- DASHBOARD ---
+        function renderDashboard() {
+            let totalSales = appState.invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+            let totalCharges = appState.charges.reduce((sum, ch) => sum + ch.amount, 0);
+            let totalCost = 0;
+            appState.invoices.forEach(inv => {
+                inv.items.forEach(item => { totalCost += (item.cost || (item.price * 0.65)) * item.qty; });
+            });
+            let netProfit = totalSales - totalCost - totalCharges;
+            let totalProductsInStock = appState.products.reduce((sum, p) => sum + p.stock, 0);
+
+            return `
+                <div class="space-y-6">
+                    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-center">
+                        <div>
+                            <span class="bg-kibyRed text-white text-xs font-bold px-3 py-1 rounded-full">Direction KIBY</span>
+                            <h2 class="text-2xl font-black mt-2">Bienvenue, ${appState.currentUser.name}</h2>
+                            <p class="text-slate-400 text-sm mt-1">Tableau de bord financier, suivi GPS et gestion atelier.</p>
+                        </div>
+                        <div class="bg-slate-800 border border-slate-700 px-4 py-3 rounded-2xl text-center mt-4 md:mt-0">
+                            <p class="text-xs text-slate-400 font-semibold">Administrateurs</p>
+                            <p class="text-sm font-bold text-white">Khelaf Ibrahim & Belhachemi Youcef</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-2xl font-bold"><i class="fa-solid fa-coins"></i></div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase">Chiffre d'Affaires</p>
+                                <h3 class="text-2xl font-black text-slate-900 mt-1">${totalSales.toLocaleString()} DA</h3>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-kibyRed/10 text-kibyRed rounded-2xl flex items-center justify-center text-2xl font-bold"><i class="fa-solid fa-chart-line"></i></div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase">Bénéfice Net Réel</p>
+                                <h3 class="text-2xl font-black text-slate-900 mt-1">${netProfit.toLocaleString()} DA</h3>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-2xl font-bold"><i class="fa-solid fa-boxes-stacked"></i></div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase">Articles en Stock</p>
+                                <h3 class="text-2xl font-black text-slate-900 mt-1">${totalProductsInStock} unités</h3>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex items-center space-x-4">
+                            <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-2xl font-bold"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase">Total Charges</p>
+                                <h3 class="text-2xl font-black text-slate-900 mt-1">${totalCharges.toLocaleString()} DA</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- STOCK & MARGES ---
+        function renderStockModule() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900">Atelier, Stock & Calcul des Marges</h2>
+                            <p class="text-sm text-slate-500">Prix d'achat, prix de vente et calcul automatique des marges bénéficiaires.</p>
+                        </div>
+                        <button onclick="openAddProductModal()" class="bg-kibyRed hover:bg-kibyDarkRed text-white font-bold px-5 py-2.5 rounded-xl transition shadow-md"><i class="fa-solid fa-plus mr-1"></i> Ajouter Produit</button>
+                    </div>
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="p-6 border-b border-slate-100"><h3 class="text-lg font-bold text-slate-900">Catalogue & Marges</h3></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
+                                        <th class="p-4">Produit</th>
+                                        <th class="p-4">Prix d'Achat</th>
+                                        <th class="p-4">Prix de Vente</th>
+                                        <th class="p-4">Marge Unitaire</th>
+                                        <th class="p-4">Stock</th>
+                                        <th class="p-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-sm">
+                                    ${appState.products.map(p => {
+                                        const margin = p.price - (p.cost || 0);
+                                        const marginPercent = p.price > 0 ? ((margin / p.price) * 100).toFixed(1) : 0;
+                                        return `
+                                            <tr class="hover:bg-slate-50 transition">
+                                                <td class="p-4 font-bold text-slate-800">${p.name}</td>
+                                                <td class="p-4 text-slate-600">${p.cost || 0} DA</td>
+                                                <td class="p-4 font-bold text-emerald-600">${p.price} DA</td>
+                                                <td class="p-4"><span class="font-black text-indigo-600">${margin} DA</span> <span class="text-xs text-slate-500">(${marginPercent}%)</span></td>
+                                                <td class="p-4"><span class="px-3 py-1 rounded-full font-bold text-xs ${p.stock < 20 ? 'bg-red-100 text-kibyRed' : 'bg-emerald-100 text-emerald-700'}">${p.stock} unités</span></td>
+                                                <td class="p-4 text-right space-x-2">
+                                                    <button onclick="editProduct('${p.id}')" class="text-slate-400 hover:text-slate-700 p-2"><i class="fa-solid fa-pen"></i></button>
+                                                    <button onclick="deleteProduct('${p.id}')" class="text-slate-400 hover:text-kibyRed p-2"><i class="fa-solid fa-trash"></i></button>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- Modal Product -->
+                <div id="product-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+                    <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-lg w-full mx-4">
+                        <h3 id="product-modal-title" class="text-xl font-bold text-slate-900 mb-4">Ajouter un Produit</h3>
+                        <form onsubmit="saveProduct(event)" class="space-y-4">
+                            <input type="hidden" id="prod-id">
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Nom du Produit (ex: Frites KIBY Sachet 5kg)</label>
+                                <input type="text" id="prod-name" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Prix d'Achat (DA)</label>
+                                    <input type="number" id="prod-cost" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Prix de Vente (DA)</label>
+                                    <input type="number" id="prod-price" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Stock</label>
+                                    <input type="number" id="prod-stock" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Fournisseur</label>
+                                    <select id="prod-supplier" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                        ${appState.suppliers.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex space-x-3 pt-4">
+                                <button type="button" onclick="closeProductModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2.5 rounded-xl">Annuler</button>
+                                <button type="submit" class="flex-1 bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 rounded-xl shadow-md">Enregistrer</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openAddProductModal() {
+            document.getElementById('product-modal-title').innerText = "Ajouter un Produit";
+            document.getElementById('prod-id').value = "";
+            document.getElementById('prod-name').value = "";
+            document.getElementById('prod-cost').value = "";
+            document.getElementById('prod-price').value = "";
+            document.getElementById('prod-stock').value = "";
+            document.getElementById('product-modal').classList.remove('hidden');
+        }
+
+        function closeProductModal() { document.getElementById('product-modal').classList.add('hidden'); }
+
+        function editProduct(id) {
+            const p = appState.products.find(item => item.id === id);
+            if (!p) return;
+            document.getElementById('product-modal-title').innerText = "Modifier le Produit";
+            document.getElementById('prod-id').value = p.id;
+            document.getElementById('prod-name').value = p.name;
+            document.getElementById('prod-cost').value = p.cost || 0;
+            document.getElementById('prod-price').value = p.price;
+            document.getElementById('prod-stock').value = p.stock;
+            document.getElementById('prod-supplier').value = p.supplier;
+            document.getElementById('product-modal').classList.remove('hidden');
+        }
+
+        function saveProduct(e) {
+            e.preventDefault();
+            const id = document.getElementById('prod-id').value;
+            const name = document.getElementById('prod-name').value;
+            const cost = parseFloat(document.getElementById('prod-cost').value);
+            const price = parseFloat(document.getElementById('prod-price').value);
+            const stock = parseInt(document.getElementById('prod-stock').value);
+            const supplier = document.getElementById('prod-supplier').value;
+
+            if (id) {
+                const p = appState.products.find(item => item.id === id);
+                if (p) { p.name = name; p.cost = cost; p.price = price; p.stock = stock; p.supplier = supplier; }
+            } else {
+                appState.products.push({ id: 'p_' + Date.now(), name, cost, price, stock, supplier, category: 'Général' });
+            }
+            saveState();
+            closeProductModal();
+            render();
+            showNotification('Succès', 'Produit enregistré.');
+        }
+
+        function deleteProduct(id) {
+            confirmAction('Supprimer', 'Voulez-vous supprimer ce produit ?', () => {
+                appState.products = appState.products.filter(p => p.id !== id);
+                saveState();
+                render();
+            });
+        }
+
+        // --- GESTION DES LIVREURS & TRACKING GPS (ADMIN) ---
+        function renderDeliveryMgmtModule() {
+            const deliveryStats = appState.deliveryMen.map(d => {
+                const invoicesByDriver = appState.invoices.filter(i => i.agentName === `Livreur: ${d.name}`);
+                const totalRevenue = invoicesByDriver.reduce((sum, inv) => sum + inv.totalAmount, 0);
+                return { ...d, totalRevenue };
+            });
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900">GPS & Gestion des Livreurs</h2>
+                            <p class="text-sm text-slate-500">Suivi GPS en temps réel sur le terrain, quotas chargés et validation de fin de journée.</p>
+                        </div>
+                        <button onclick="openAddDeliveryModal()" class="bg-kibyRed hover:bg-kibyDarkRed text-white font-bold px-5 py-2.5 rounded-xl shadow-md"><i class="fa-solid fa-user-plus mr-1"></i> Nouveau Livreur</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${deliveryStats.map(d => `
+                            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
+                                <div>
+                                    <div class="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 class="text-lg font-black text-slate-900">${d.name}</h3>
+                                            <p class="text-xs text-slate-500 font-semibold"><i class="fa-solid fa-car text-kibyRed mr-1"></i> ${d.car}</p>
+                                        </div>
+                                        <span class="px-2.5 py-1 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-700 animate-pulse">GPS Actif</span>
+                                    </div>
+                                    <div class="space-y-3 mb-4 text-xs text-slate-600 bg-slate-50 p-4 rounded-2xl">
+                                        <div class="flex justify-between items-center">
+                                            <span><strong>Téléphone:</strong> ${d.phone}</span>
+                                            <a href="tel:${d.phone}" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold"><i class="fa-solid fa-phone"></i> Appeler</a>
+                                        </div>
+                                        <div class="bg-blue-50 border border-blue-200 p-3 rounded-xl text-blue-900 shadow-inner">
+                                            <p class="font-bold flex items-center space-x-1.5"><i class="fa-solid fa-satellite-dish text-blue-600 animate-spin"></i> <span>Position GPS Temps Réel :</span></p>
+                                            <p class="text-[11px] font-mono mt-1 text-slate-800">Lat: ${d.latitude || '35.7128'}, Lon: ${d.longitude || '-0.5521'}</p>
+                                            <p class="text-[10px] text-blue-600 mt-0.5">Dernière mise à jour : ${d.lastGpsUpdate || 'Récemment'}</p>
+                                            <a href="https://maps.google.com/?q=${d.latitude || 35.7128},${d.longitude || -0.5521}" target="_blank" class="mt-2 inline-block bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold px-3 py-1 rounded-lg"><i class="fa-solid fa-map-location-dot mr-1"></i> Ouvrir sur Google Maps</a>
+                                        </div>
+                                        <div>
+                                            <p class="font-bold text-slate-700 mb-1"><i class="fa-solid fa-boxes-stacked text-blue-600"></i> Quota Chargé sur Voiture (5kg) :</p>
+                                            <ul class="space-y-1 pl-3 border-l-2 border-blue-300">
+                                                ${(!d.quotaLoaded || d.quotaLoaded.length === 0) ? '<li class="italic text-slate-400">Aucun produit déclaré</li>' : d.quotaLoaded.map(q => `<li><b>${q.productName}</b> : <span class="text-blue-600 font-bold">${q.qtyBags} sachets (5kg)</span></li>`).join('')}
+                                            </ul>
+                                        </div>
+                                        <p><strong>CA réalisé:</strong> <span class="text-emerald-600 font-bold">${d.totalRevenue.toLocaleString()} DA</span></p>
+                                        <div class="pt-2 border-t border-slate-200">
+                                            <p class="text-[11px] font-bold text-slate-700">Dernière validation:</p>
+                                            <p class="text-slate-900 font-extrabold">${d.lastValidatedBy ? `${d.lastValidatedBy} (${d.lastValidatedDate || 'Aujourd\'hui'})` : 'Aucune'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-2 pt-2 border-t border-slate-100">
+                                    <button onclick="validateDriverEndOfDay('${d.id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-xl transition shadow-md"><i class="fa-solid fa-check-double mr-1"></i> Valider Fin de Journée</button>
+                                    <div class="flex space-x-2">
+                                        <button onclick="editDeliveryPassword('${d.id}')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold py-2 rounded-xl">Changer Mdp</button>
+                                        <button onclick="deleteDelivery('${d.id}')" class="px-3 bg-red-50 hover:bg-red-100 text-kibyRed text-xs font-bold py-2 rounded-xl"><i class="fa-solid fa-trash"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <!-- Modal Add Delivery -->
+                <div id="delivery-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+                    <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full mx-4">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">Créer un Compte Livreur</h3>
+                        <form onsubmit="saveDelivery(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Nom et Prénom</label>
+                                <input type="text" id="del-name" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Mot de passe</label>
+                                <input type="text" id="del-password" required value="123" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Téléphone</label>
+                                <input type="text" id="del-phone" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Véhicule / Voiture</label>
+                                <input type="text" id="del-car" required placeholder="Ex: Renault Express" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div class="flex space-x-3 pt-4">
+                                <button type="button" onclick="closeDeliveryModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2.5 rounded-xl">Annuler</button>
+                                <button type="submit" class="flex-1 bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 rounded-xl shadow-md">Enregistrer</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- PORTAIL LIVREUR ---
+        function renderDeliveryPortal() {
+            const driver = appState.deliveryMen.find(d => d.name === appState.currentUser.name) || { quotaLoaded: [], car: 'Véhicule' };
+
+            return `
+                <div class="space-y-6 max-w-3xl mx-auto">
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 space-y-6">
+                        <div class="flex items-center space-x-4 border-b border-slate-100 pb-6">
+                            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-3xl font-bold">
+                                <i class="fa-solid fa-car"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-2xl font-black text-slate-900">Espace Livreur : ${driver.name}</h2>
+                                <p class="text-sm text-slate-500">Véhicule assigné : <span class="font-bold text-slate-800">${driver.car}</span></p>
+                                <p class="text-xs text-emerald-600 font-bold mt-1"><i class="fa-solid fa-satellite-dish animate-pulse"></i> Tracking GPS Actif</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-6 space-y-4">
+                            <h3 class="font-bold text-blue-900 text-base"><i class="fa-solid fa-box-open mr-2"></i> Déclarer les Quotas Chargés sur la Voiture (Sachets 5kg)</h3>
+                            <p class="text-xs text-blue-700">Sélectionnez chaque produit chargé et indiquez précisément le nombre de sachets de 5kg.</p>
+                            
+                            <form onsubmit="handleAddDriverQuotaItem(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-[11px] font-bold uppercase text-blue-800 mb-1">Produit</label>
+                                    <select id="driver-prod-select" class="w-full bg-white border border-blue-300 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-600 focus:outline-none">
+                                        ${appState.products.map(p => `<option value="${p.name}">${p.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold uppercase text-blue-800 mb-1">Nombre (Sachets 5kg)</label>
+                                    <div class="flex space-x-2">
+                                        <input type="number" id="driver-qty-bags" min="1" required value="10" class="w-full bg-white border border-blue-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 font-bold text-center">
+                                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl shadow-md transition whitespace-nowrap"><i class="fa-solid fa-plus"></i></button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="bg-white border border-slate-200 rounded-2xl p-6">
+                            <h3 class="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wider text-slate-400">Marchandises actuellement chargées sur votre voiture :</h3>
+                            <div class="space-y-2">
+                                ${(!driver.quotaLoaded || driver.quotaLoaded.length === 0) ? '<p class="text-center text-xs text-slate-400 italic py-6">Aucun quota déclaré pour aujourd\'hui.</p>' : driver.quotaLoaded.map((item, idx) => `
+                                    <div class="flex justify-between items-center bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                                        <div>
+                                            <p class="font-bold text-slate-800 text-sm">${item.productName}</p>
+                                            <p class="text-xs text-blue-600 font-semibold">${item.qtyBags} sachets de 5kg</p>
+                                        </div>
+                                        <button onclick="removeDriverQuotaItem(${idx})" class="text-red-500 hover:text-kibyRed p-2"><i class="fa-solid fa-trash"></i></button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleAddDriverQuotaItem(e) {
+            e.preventDefault();
+            const productName = document.getElementById('driver-prod-select').value;
+            const qtyBags = parseInt(document.getElementById('driver-qty-bags').value) || 0;
+            const driver = appState.deliveryMen.find(d => d.name === appState.currentUser.name);
+            if (driver) {
+                if (!driver.quotaLoaded) driver.quotaLoaded = [];
+                const existing = driver.quotaLoaded.find(q => q.productName === productName);
+                if (existing) {
+                    existing.qtyBags += qtyBags;
+                } else {
+                    driver.quotaLoaded.push({ productName, qtyBags });
+                }
+                saveState();
+                render();
+                showNotification('Succès', 'Quota de sachets 5kg ajouté à votre voiture.');
+            }
+        }
+
+        function removeDriverQuotaItem(idx) {
+            const driver = appState.deliveryMen.find(d => d.name === appState.currentUser.name);
+            if (driver && driver.quotaLoaded) {
+                driver.quotaLoaded.splice(idx, 1);
+                saveState();
+                render();
+            }
+        }
+
+        function openAddDeliveryModal() { document.getElementById('delivery-modal').classList.remove('hidden'); }
+        function closeDeliveryModal() { document.getElementById('delivery-modal').classList.add('hidden'); }
+
+        function saveDelivery(e) {
+            e.preventDefault();
+            const name = document.getElementById('del-name').value;
+            const password = document.getElementById('del-password').value;
+            const phone = document.getElementById('del-phone').value;
+            const car = document.getElementById('del-car').value;
+
+            appState.deliveryMen.push({ id: 'del_' + Date.now(), name, password, phone, car, latitude: 35.7128, longitude: -0.5521, lastGpsUpdate: 'Maintenant', quotaLoaded: [], lastValidatedBy: 'Aucun', lastValidatedDate: '-' });
+            saveState();
+            closeDeliveryModal();
+            render();
+            showNotification('Succès', 'Livreur créé.');
+        }
+
+        function validateDriverEndOfDay(id) {
+            const d = appState.deliveryMen.find(item => item.id === id);
+            if (!d) return;
+            confirmAction('Validation Fin de Journée', `Valider la fin de journée pour ${d.name} par ${appState.currentUser.name} ? Le quota chargé sur la voiture sera réinitialisé.`, () => {
+                d.quotaLoaded = [];
+                d.lastValidatedBy = appState.currentUser.name;
+                d.lastValidatedDate = new Date().toISOString().split('T')[0];
+                saveState();
+                render();
+                showNotification('Clôture Validée', `Journée validée pour ${d.name}.`);
+            });
+        }
+
+        function editDeliveryPassword(id) {
+            const d = appState.deliveryMen.find(item => item.id === id);
+            if (!d) return;
+            const p = prompt(`Nouveau mot de passe pour ${d.name}:`, d.password);
+            if (p !== null) { d.password = p; saveState(); render(); showNotification('Succès', 'Mot de passe modifié.'); }
+        }
+
+        function deleteDelivery(id) {
+            confirmAction('Supprimer', 'Voulez-vous supprimer ce livreur ?', () => {
+                appState.deliveryMen = appState.deliveryMen.filter(d => d.id !== id);
+                saveState();
+                render();
+            });
+        }
+
+        // --- CHARGES ---
+        function renderChargesModule() {
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900">Charges de l'Entreprise</h2>
+                            <p class="text-sm text-slate-500">Suivi des dépenses et frais d'exploitation.</p>
+                        </div>
+                        <button onclick="openAddChargeModal()" class="bg-kibyRed hover:bg-kibyDarkRed text-white font-bold px-5 py-2.5 rounded-xl shadow-md"><i class="fa-solid fa-plus mr-1"></i> Ajouter Charge</button>
+                    </div>
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
+                                    <th class="p-4">Intitulé</th>
+                                    <th class="p-4">Catégorie</th>
+                                    <th class="p-4">Date</th>
+                                    <th class="p-4">Montant</th>
+                                    <th class="p-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-sm">
+                                ${appState.charges.map(ch => `
+                                    <tr class="hover:bg-slate-50 transition">
+                                        <td class="p-4 font-bold text-slate-800">${ch.title}</td>
+                                        <td class="p-4"><span class="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold">${ch.category}</span></td>
+                                        <td class="p-4 text-slate-600">${ch.date}</td>
+                                        <td class="p-4 font-black text-kibyRed">${ch.amount.toLocaleString()} DA</td>
+                                        <td class="p-4 text-right"><button onclick="deleteCharge('${ch.id}')" class="text-slate-400 hover:text-kibyRed p-2"><i class="fa-solid fa-trash"></i></button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Modal Charge -->
+                <div id="charge-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+                    <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full mx-4">
+                        <h3 class="text-xl font-bold text-slate-900 mb-4">Ajouter une Charge</h3>
+                        <form onsubmit="saveCharge(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Intitulé</label>
+                                <input type="text" id="ch-title" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Catégorie</label>
+                                <select id="ch-cat" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                    <option value="Transport">Transport & Carburant</option>
+                                    <option value="Matériel">Matériel & Emballages</option>
+                                    <option value="Maintenance">Maintenance</option>
+                                    <option value="Divers">Divers</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Montant (DA)</label>
+                                <input type="number" id="ch-amount" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Date</label>
+                                <input type="date" id="ch-date" required value="${new Date().toISOString().split('T')[0]}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div class="flex space-x-3 pt-4">
+                                <button type="button" onclick="closeChargeModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2.5 rounded-xl">Annuler</button>
+                                <button type="submit" class="flex-1 bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 rounded-xl shadow-md">Enregistrer</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openAddChargeModal() { document.getElementById('charge-modal').classList.remove('hidden'); }
+        function closeChargeModal() { document.getElementById('charge-modal').classList.add('hidden'); }
+
+        function saveCharge(e) {
+            e.preventDefault();
+            const title = document.getElementById('ch-title').value;
+            const category = document.getElementById('ch-cat').value;
+            const amount = parseFloat(document.getElementById('ch-amount').value);
+            const date = document.getElementById('ch-date').value;
+            appState.charges.push({ id: 'ch_' + Date.now(), title, category, amount, date });
+            saveState();
+            closeChargeModal();
+            render();
+            showNotification('Succès', 'Charge enregistrée.');
+        }
+
+        function deleteCharge(id) {
+            confirmAction('Supprimer', 'Supprimer cette charge ?', () => {
+                appState.charges = appState.charges.filter(ch => ch.id !== id);
+                saveState();
+                render();
+            });
+        }
+
+        // --- CLIENTS & REÇUS DE CAISSE ---
+        function renderClientsModule() {
+            const isAdmin = appState.currentUser.role === 'admin';
+            const issuerDefaultName = isAdmin ? `Admin: ${appState.currentUser.name}` : `Livreur: ${appState.currentUser.name}`;
+
+            return `
+                <div class="space-y-6">
+                    <div class="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900">Clients Restaurants & Reçus de Caisse</h2>
+                            <p class="text-sm text-slate-500">Appels directs aux clients, répertoire et émission de reçus officiels.</p>
+                        </div>
+                        <button onclick="openAddClientModal()" class="bg-kibyRed hover:bg-kibyDarkRed text-white font-bold px-5 py-2.5 rounded-xl shadow-md"><i class="fa-solid fa-store mr-1"></i> Nouveau Client</button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                            <div class="p-6 border-b border-slate-100"><h3 class="text-lg font-bold text-slate-900">Répertoire des Restaurants (Bir El Djir, Oran)</h3></div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
+                                            <th class="p-4">Restaurant</th>
+                                            <th class="p-4">Téléphone</th>
+                                            <th class="p-4">Localisation</th>
+                                            <th class="p-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 text-sm">
+                                        ${appState.clients.map(c => `
+                                            <tr class="hover:bg-slate-50 transition">
+                                                <td class="p-4 font-bold text-slate-800">${c.name}</td>
+                                                <td class="p-4">
+                                                    <a href="tel:${c.phone}" class="inline-flex items-center space-x-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-3 py-1 rounded-xl text-xs transition">
+                                                        <i class="fa-solid fa-phone"></i>
+                                                        <span>${c.phone}</span>
+                                                    </a>
+                                                </td>
+                                                <td class="p-4 text-slate-600"><i class="fa-solid fa-location-dot text-kibyRed mr-1"></i> ${c.location}</td>
+                                                <td class="p-4 text-right space-x-2">
+                                                    <button onclick="viewClientHistory('${c.name}')" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl" title="Historique"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                                                    <button onclick="startOrderForClient('${c.id}')" class="bg-kibyRed hover:bg-kibyDarkRed text-white text-xs font-bold px-3 py-1.5 rounded-xl">Créer Reçu</button>
+                                                    <button onclick="editClient('${c.id}')" class="text-slate-400 hover:text-slate-700 p-2"><i class="fa-solid fa-pen"></i></button>
+                                                    <button onclick="deleteClient('${c.id}')" class="text-slate-400 hover:text-kibyRed p-2"><i class="fa-solid fa-trash"></i></button>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+                            <div>
+                                <h3 class="text-lg font-bold text-slate-900 mb-4">Panier / Reçu de Caisse</h3>
+                                <div class="mb-4">
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Émetteur (Strict)</label>
+                                    <input type="text" readonly value="${issuerDefaultName}" class="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 cursor-not-allowed">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Client</label>
+                                    <select id="order-client-select" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                        ${appState.clients.map(c => `<option value="${c.id}">${c.name} (${c.location})</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Produit</label>
+                                    <div class="flex space-x-2">
+                                        <select id="order-product-select" class="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                                            ${appState.products.map(p => `<option value="${p.id}">${p.name} (${p.price} DA)</option>`).join('')}
+                                        </select>
+                                        <input type="number" id="order-product-qty" value="1" min="1" class="w-20 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-center">
+                                        <button onclick="addToCart()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl"><i class="fa-solid fa-plus"></i></button>
+                                    </div>
+                                </div>
+                                <div class="border-t border-slate-100 pt-4 mb-4">
+                                    <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Articles</h4>
+                                    <div id="cart-items-container" class="space-y-2 max-h-48 overflow-y-auto">
+                                        ${currentCart.length === 0 ? '<p class="text-xs text-slate-400 italic text-center py-4">Panier vide</p>' : ''}
+                                        ${currentCart.map((item, idx) => `
+                                            <div class="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl text-xs">
+                                                <div>
+                                                    <p class="font-bold text-slate-800">${item.productName}</p>
+                                                    <p class="text-slate-500">${item.qty} x ${item.price} DA</p>
+                                                </div>
+                                                <div class="flex items-center space-x-2">
+                                                    <span class="font-bold text-slate-900">${item.qty * item.price} DA</span>
+                                                    <button onclick="removeFromCart(${idx})" class="text-kibyRed p-1"><i class="fa-solid fa-xmark"></i></button>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="border-t border-slate-100 pt-4">
+                                <div class="flex justify-between items-center mb-4">
+                                    <span class="text-sm font-bold text-slate-600">Total :</span>
+                                    <span class="text-xl font-black text-kibyRed">${currentCart.reduce((sum, item) => sum + (item.qty * item.price), 0).toLocaleString()} DA</span>
+                                </div>
+                                <button onclick="validateAndPreviewOrder()" class="w-full bg-kibyRed hover:bg-kibyDarkRed text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center space-x-2">
+                                    <i class="fa-solid fa-eye"></i>
+                                    <span>Aperçu Obligatoire & Valider</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Modal Client -->
+                <div id="client-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm hidden">
+                    <div class="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full mx-4">
+                        <h3 id="client-modal-title" class="text-xl font-bold text-slate-900 mb-4">Ajouter un Client</h3>
+                        <form onsubmit="saveClient(event)" class="space-y-4">
+                            <input type="hidden" id="client-id">
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Nom Restaurant</label>
+                                <input type="text" id="client-name" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Téléphone</label>
+                                <input type="text" id="client-phone" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Localisation (ex: Bir El Djir, Oran)</label>
+                                <input type="text" id="client-location" required value="Bir El Djir, Oran" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-slate-800 focus:ring-2 focus:ring-kibyRed focus:outline-none">
+                            </div>
+                            <div class="flex space-x-3 pt-4">
+                                <button type="button" onclick="closeClientModal()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2.5 rounded-xl">Annuler</button>
+                                <button type="submit" class="flex-1 bg-kibyRed hover:bg-kibyDarkRed text-white font-semibold py-2.5 rounded-xl shadow-md">Enregistrer</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function openAddClientModal() {
+            document.getElementById('client-modal-title').innerText = "Ajouter un Client";
+            document.getElementById('client-id').value = "";
+            document.getElementById('client-name').value = "";
+            document.getElementById('client-phone').value = "";
+            document.getElementById('client-location').value = "Bir El Djir, Oran";
+            document.getElementById('client-modal').classList.remove('hidden');
+        }
+
+        function closeClientModal() { document.getElementById('client-modal').classList.add('hidden'); }
+
+        function editClient(id) {
+            const c = appState.clients.find(item => item.id === id);
+            if (!c) return;
+            document.getElementById('client-modal-title').innerText = "Modifier le Client";
+            document.getElementById('client-id').value = c.id;
+            document.getElementById('client-name').value = c.name;
+            document.getElementById('client-phone').value = c.phone;
+            document.getElementById('client-location').value = c.location;
+            document.getElementById('client-modal').classList.remove('hidden');
+        }
+
+        function saveClient(e) {
+            e.preventDefault();
+            const id = document.getElementById('client-id').value;
+            const name = document.getElementById('client-name').value;
+            const phone = document.getElementById('client-phone').value;
+            const location = document.getElementById('client-location').value;
+
+            if (id) {
+                const c = appState.clients.find(item => item.id === id);
+                if (c) { c.name = name; c.phone = phone; c.location = location; }
+            } else {
+                appState.clients.push({ id: 'c_' + Date.now(), name, phone, location });
+            }
+            saveState();
+            closeClientModal();
+            render();
+            showNotification('Succès', 'Client enregistré.');
+        }
+
+        function deleteClient(id) {
+            confirmAction('Supprimer', 'Voulez-vous supprimer ce client ?', () => {
+                appState.clients = appState.clients.filter(c => c.id !== id);
+                saveState();
+                render();
+            });
+        }
+
+        function viewClientHistory(clientName) {
+            const clientInvoices = appState.invoices.filter(i => i.clientName === clientName);
+            const totalSpent = clientInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+            document.getElementById('client-history-title').innerText = `Historique - ${clientName}`;
+            const body = document.getElementById('client-history-body');
+            body.innerHTML = `
+                <div class="bg-slate-100 p-4 rounded-2xl flex justify-between items-center mb-4">
+                    <div>
+                        <p class="text-xs text-slate-500 font-bold uppercase">Total Reçus</p>
+                        <p class="text-lg font-black text-slate-900">${clientInvoices.length} reçus</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs text-slate-500 font-bold uppercase">CA Total</p>
+                        <p class="text-lg font-black text-kibyRed">${totalSpent.toLocaleString()} DA</p>
+                    </div>
+                </div>
+                <div class="space-y-3">
+                    ${clientInvoices.length === 0 ? '<p class="text-center text-xs text-slate-400 py-6">Aucun reçu trouvé.</p>' : ''}
+                    ${clientInvoices.map(inv => `
+                        <div class="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-slate-900 text-sm">${inv.id} • <span class="text-kibyRed">${inv.totalAmount.toLocaleString()} DA</span></p>
+                                <p class="text-xs text-slate-500">Date: ${inv.date} | Émis par: ${inv.agentName}</p>
+                            </div>
+                            <button onclick="closeClientHistoryModal(); previewInvoiceById('${inv.id}')" class="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-xl">Voir</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            document.getElementById('client-history-modal').classList.remove('hidden');
+        }
+
+        function closeClientHistoryModal() { document.getElementById('client-history-modal').classList.add('hidden'); }
+
+        function startOrderForClient(clientId) {
+            document.getElementById('order-client-select').value = clientId;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function addToCart() {
+            const prodId = document.getElementById('order-product-select').value;
+            const qty = parseInt(document.getElementById('order-product-qty').value) || 1;
+            const product = appState.products.find(p => p.id === prodId);
+            if (!product) return;
+            if (product.stock < qty) {
+                showNotification('Stock Insuffisant', `Il ne reste que ${product.stock} unités.`, 'error');
+                return;
+            }
+            const existing = currentCart.find(item => item.productName === product.name);
+            if (existing) { existing.qty += qty; } else {
+                currentCart.push({ productName: product.name, price: product.price, cost: product.cost || 0, qty: qty });
+            }
+            render();
+        }
+
+        function removeFromCart(idx) { currentCart.splice(idx, 1); render(); }
+
+        function validateAndPreviewOrder() {
+            if (currentCart.length === 0) {
+                showNotification('Panier Vide', 'Ajoutez au moins un produit.', 'error');
+                return;
+            }
+            const isAdmin = appState.currentUser.role === 'admin';
+            const issuerName = isAdmin ? `Admin: ${appState.currentUser.name}` : `Livreur: ${appState.currentUser.name}`;
+            const clientId = document.getElementById('order-client-select').value;
+            const client = appState.clients.find(c => c.id === clientId) || { name: 'Client', phone: '-', location: 'Bir El Djir, Oran' };
+            const totalAmount = currentCart.reduce((sum, item) => sum + (item.qty * item.price), 0);
+            const invoiceId = 'KIBY-REC-' + new Date().getFullYear() + '-' + String(Math.floor(100 + Math.random() * 900));
+
+            currentInvoiceForPreview = {
+                id: invoiceId,
+                date: new Date().toLocaleString(),
+                clientName: client.name,
+                clientPhone: client.phone,
+                clientLocation: client.location,
+                agentName: issuerName,
+                items: JSON.parse(JSON.stringify(currentCart)),
+                totalAmount: totalAmount,
+                status: 'Validé'
+            };
+
+            showPreviewModal(currentInvoiceForPreview);
+        }
+
+        function showPreviewModal(inv) {
+            document.getElementById('preview-modal-body').innerHTML = generateInvoiceHtmlMarkup(inv);
+            document.getElementById('preview-modal').classList.remove('hidden');
+        }
+
+        function closePreviewModal() { document.getElementById('preview-modal').classList.add('hidden'); }
+
+        // --- HISTORIQUE DES REÇUS ---
+        function renderInvoicesModule() {
+            return `
+                <div class="space-y-6">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-900">Historique des Reçus de Caisse</h2>
+                            <p class="text-sm text-slate-500">Consultez et réimprimez les reçus officiels émis.</p>
+                        </div>
+                        <span class="text-xs bg-slate-100 text-slate-600 font-semibold px-3 py-1 rounded-full">${appState.invoices.length} reçus</span>
+                    </div>
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-400 text-xs uppercase font-bold border-b border-slate-100">
+                                    <th class="p-4">Réf. Reçu</th>
+                                    <th class="p-4">Date</th>
+                                    <th class="p-4">Client Restaurant</th>
+                                    <th class="p-4">Émis par</th>
+                                    <th class="p-4">Montant Total</th>
+                                    <th class="p-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-sm">
+                                ${appState.invoices.map(inv => `
+                                    <tr class="hover:bg-slate-50 transition">
+                                        <td class="p-4 font-bold text-kibyRed">${inv.id}</td>
+                                        <td class="p-4 text-slate-600">${inv.date}</td>
+                                        <td class="p-4 font-bold text-slate-800">${inv.clientName}</td>
+                                        <td class="p-4"><span class="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold">${inv.agentName}</span></td>
+                                        <td class="p-4 font-black text-slate-900">${inv.totalAmount.toLocaleString()} DA</td>
+                                        <td class="p-4 text-right">
+                                            <button onclick="previewInvoiceById('${inv.id}')" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl"><i class="fa-solid fa-eye mr-1"></i> Voir</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function previewInvoiceById(id) {
+            const inv = appState.invoices.find(i => i.id === id);
+            if (inv) { currentInvoiceForPreview = inv; showPreviewModal(inv); }
+        }
+
+        function generateInvoiceHtmlMarkup(inv) {
+            return `
+                <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; padding: 30px; background: white; color: #121212; border: 2px solid #e2e8f0; border-radius: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #e6222b; padding-bottom: 20px; margin-bottom: 25px;">
+                        <div>
+                            <div style="display: inline-block; background: #e6222b; color: white; padding: 8px 16px; border-radius: 12px; font-weight: 900; font-size: 22px; font-style: italic; margin-bottom: 8px;">KIBY Food Company</div>
+                            <p style="font-size: 12px; font-weight: 700; color: #334155; margin: 2px 0;">N°03, Coopérative immobilière Maata Mohammed</p>
+                            <p style="font-size: 12px; font-weight: 700; color: #334155; margin: 2px 0;">El Habib Bir El Djir, Wilaya d'Oran</p>
+                            <p style="font-size: 12px; color: #64748b; margin: 2px 0;">Tél: 0553339847 / 0772666058 | Email: kibyfood@gmail.com</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <h2 style="font-size: 20px; font-weight: 900; color: #e6222b; margin: 0;">REÇU DE CAISSE</h2>
+                            <p style="font-size: 14px; font-weight: bold; color: #0f172a; margin: 4px 0;">Réf: ${inv.id}</p>
+                            <p style="font-size: 11px; color: #64748b; margin: 0;">Date: ${inv.date}</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; background: #f8fafc; padding: 16px; border-radius: 12px; margin-bottom: 25px;">
+                        <div>
+                            <p style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Client (Restaurant)</p>
+                            <h3 style="font-size: 15px; font-weight: 900; color: #0f172a; margin: 0;">${inv.clientName}</h3>
+                            <p style="font-size: 12px; color: #334155; margin: 2px 0;">Tél: ${inv.clientPhone}</p>
+                            <p style="font-size: 12px; color: #334155; margin: 2px 0;">Localisation: ${inv.clientLocation}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Émetteur (Strict)</p>
+                            <h3 style="font-size: 15px; font-weight: 900; color: #e6222b; margin: 0;">${inv.agentName}</h3>
+                        </div>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                        <thead>
+                            <tr style="background: #0f172a; color: white; text-align: left; font-size: 11px; text-transform: uppercase;">
+                                <th style="padding: 10px;">Désignation Produit</th>
+                                <th style="padding: 10px; text-align: center;">Quantité</th>
+                                <th style="padding: 10px; text-align: right;">Prix Unitaire</th>
+                                <th style="padding: 10px; text-align: right;">Total (DA)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${inv.items.map(item => `
+                                <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px;">
+                                    <td style="padding: 10px; font-weight: bold; color: #1e293b;">${item.productName}</td>
+                                    <td style="padding: 10px; text-align: center; font-weight: bold;">${item.qty}</td>
+                                    <td style="padding: 10px; text-align: right; color: #475569;">${item.price.toLocaleString()} DA</td>
+                                    <td style="padding: 10px; text-align: right; font-weight: 900; color: #0f172a;">${(item.qty * item.price).toLocaleString()} DA</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
+                        <div style="background: #fef2f2; border: 2px solid #e6222b; padding: 12px 24px; border-radius: 12px; text-align: right; min-width: 220px;">
+                            <p style="font-size: 11px; font-weight: bold; color: #991b1b; text-transform: uppercase; margin: 0;">Montant Total</p>
+                            <h2 style="font-size: 22px; font-weight: 900; color: #e6222b; margin: 4px 0 0 0;">${inv.totalAmount.toLocaleString()} DA</h2>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.onload = function() { render(); };
+    </script>
+</body>
+</html>
